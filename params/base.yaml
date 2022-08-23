@@ -1,0 +1,66 @@
+
+
+sr: 16000
+auto_mix_prec: True
+data_root: /data/asvspoof19/LA
+model_type: facebook/wav2vec2-base
+exp_name: base_la_spoof_classifier
+output_folder: !ref /data/w2v_spoof_detector/results/<exp_name>
+
+
+data:
+  train:
+    meta: !ref <data_root>/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt
+    audio: !ref <data_root>/ASVspoof2019_LA_train/flac
+  test:
+    meta: !ref <data_root>/ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt
+    audio: !ref <data_root>/ASVspoof2019_LA_dev/flac
+
+train_params:
+  batch_size: 16
+  num_epoch: 5
+  initial_lr: 5.0e-5
+  num_workers: 4
+  checkpoints_to_keep: 2
+
+feature_extractor: !new:transformers.Wav2Vec2FeatureExtractor
+
+
+model: !new:models.model.BinaryW2VClassifier
+  encoder: !new:models.model.TransformersEncoder
+    model_type: !ref <model_type>
+    encoder_params:
+      apply_spec_augment: True
+    freeze_feature_extractor: True
+    input_layer_norm: False
+    output_norm: False
+    apply_attention_masking: False  # set null to rely on feature extractor parameters
+    freeze: False
+  classifier_do: 0
+
+
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter
+    limit: !ref <train_params[num_epoch]>
+
+
+lr_scheduler: !new:utils.schedulers.LinearSchedulerWithWarmup
+  initial_value: !ref <train_params[initial_lr]>
+  final_value: 0
+  warmup_steps: 1000
+  constant_steps: 0
+  linear_steps: !ref <train_params[num_epoch]> * <train_params[batch_size]>
+
+
+optimizer: !name:torch.optim.AdamW
+  lr: !ref <train_params[initial_lr]>
+  betas: (0.9, 0.999)
+  weight_decay: 0
+  eps: 1.0e-8
+
+
+checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
+    checkpoints_dir: !ref <output_folder>
+    recoverables:
+        model: !ref <model>
+        counter: !ref <epoch_counter>
+        lr_scheduler: !ref <lr_scheduler>
